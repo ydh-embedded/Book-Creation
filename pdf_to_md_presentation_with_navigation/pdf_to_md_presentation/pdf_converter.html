@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to Markdown Converter</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="./styles/style.css">
+
+
+    <!-- LINK AJAX-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+</head>
+<body>
+    <button class="back-button" onclick="goBack()">
+        <i class="fas fa-arrow-left"></i>
+    </button>
+    <!-- SECTION PDF to Markdown Converter -->
+    <div class="container">
+        <div class="header">
+            <h1 class="title">PDF to Markdown Converter</h1>
+            <p class="subtitle">Transform your PDF documents into accessible Markdown format</p>
+        </div>
+        
+        <div class="upload-section" id="uploadSection">
+            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+            <div class="upload-text">Drag & drop your PDF file here</div>
+            <div class="upload-subtext">or click to browse files (Max size: 50MB)</div>
+            <button class="upload-button" onclick="document.getElementById('fileInput').click()">
+                Choose PDF File
+            </button>
+            <input type="file" id="fileInput" class="file-input" accept=".pdf" onchange="handleFileSelect(event)">
+            
+            <div class="file-info" id="fileInfo">
+                <div class="file-name" id="fileName"></div>
+                <div class="file-size" id="fileSize"></div>
+            </div>
+            
+            <button class="process-button" id="processButton" onclick="processFile()">
+                <i class="fas fa-cogs"></i> Convert to Markdown
+            </button>
+        </div>
+        
+        <div class="progress-section" id="progressSection">
+            <div class="progress-text" id="progressText">Processing your PDF...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div id="progressDetails">Extracting text and formatting...</div>
+        </div>
+        
+        <div class="error-section" id="errorSection">
+            <i class="fas fa-exclamation-triangle error-icon"></i>
+            <div class="error-title">Conversion Failed</div>
+            <div id="errorMessage">An error occurred while processing your PDF.</div>
+            <button class="upload-button" onclick="resetConverter()" style="margin-top: 20px;">
+                Try Again
+            </button>
+        </div>
+        
+        <div class="result-section" id="resultSection">
+            <div class="result-icon" style="text-align: center;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="result-title">Conversion Completed Successfully!</div>
+            
+            <div class="markdown-preview" id="markdownPreview"></div>
+            
+            <div class="button-group">
+                <button class="download-button" id="downloadMarkdown" onclick="downloadMarkdown()">
+                    <i class="fas fa-download"></i> Download Markdown
+                </button>
+                
+                <button class="upload-button" onclick="copyToClipboard()" style="margin-left: 10px;">
+                    <i class="fas fa-copy"></i> Copy to Clipboard
+                </button>
+            </div>
+            
+            <div class="button-group">
+                <button class="upload-button" onclick="resetConverter()">
+                    Convert Another PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LINK JavaScript-->
+    <script>
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        let selectedFile = null;
+        let extractedMarkdown = '';
+        
+        // File selection handling
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                selectedFile = file;
+                showFileInfo(file);
+            } else {
+                alert('Please select a valid PDF file.');
+            }
+        }
+        
+        // Show file information
+        function showFileInfo(file) {
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const fileSize = document.getElementById('fileSize');
+            const processButton = document.getElementById('processButton');
+            
+            fileName.textContent = file.name;
+            fileSize.textContent = `Size: ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+            
+            fileInfo.style.display = 'block';
+            processButton.style.display = 'inline-block';
+        }
+        
+        // Drag and drop handling
+        const uploadSection = document.getElementById('uploadSection');
+        
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.classList.add('dragover');
+        });
+        
+        uploadSection.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+        });
+        
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type === 'application/pdf') {
+                selectedFile = files[0];
+                showFileInfo(files[0]);
+                
+                // Update file input
+                const fileInput = document.getElementById('fileInput');
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(files[0]);
+                fileInput.files = dataTransfer.files;
+            } else {
+                alert('Please drop a valid PDF file.');
+            }
+        });
+        
+        // Process file using PDF.js
+        async function processFile() {
+            if (!selectedFile) {
+                alert('Please select a PDF file first.');
+                return;
+            }
+            
+            // Show progress section
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('progressSection').style.display = 'block';
+            
+            try {
+                updateProgress(10, 'Reading PDF file...');
+                
+                // Convert file to array buffer
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                
+                updateProgress(30, 'Loading PDF document...');
+                
+                // Load PDF document
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                
+                updateProgress(50, 'Extracting text from pages...');
+                
+                let markdownText = `# ${selectedFile.name.replace('.pdf', '')}\n\n`;
+                
+                // Extract text from each page
+                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                    const page = await pdf.getPage(pageNum);
+                    const textContent = await page.getTextContent();
+                    
+                    // Convert text items to markdown
+                    let pageText = '';
+                    let lastY = null;
+                    let lastSize = null;
+                    
+                    textContent.items.forEach((item, index) => {
+                        const text = item.str.trim();
+                        if (!text) return;
+                        
+                        // Detect potential headings based on font size and position
+                        const fontSize = item.transform[0];
+                        const y = item.transform[5];
+                        
+                        // If this is a new line (different Y position)
+                        if (lastY !== null && Math.abs(y - lastY) > 10) {
+                            pageText += '\n';
+                        }
+                        
+                        // If font size is significantly larger, treat as heading
+                        if (lastSize !== null && fontSize > lastSize * 1.2) {
+                            pageText += '\n## ';
+                        }
+                        
+                        pageText += text + ' ';
+                        lastY = y;
+                        lastSize = fontSize;
+                    });
+                    
+                    if (pageText.trim()) {
+                        markdownText += `## Page ${pageNum}\n\n${pageText.trim()}\n\n`;
+                    }
+                    
+                    // Update progress
+                    const progress = 50 + (pageNum / pdf.numPages) * 40;
+                    updateProgress(progress, `Processing page ${pageNum} of ${pdf.numPages}...`);
+                }
+                
+                updateProgress(95, 'Formatting markdown...');
+                
+                // Clean up the markdown
+                markdownText = cleanupMarkdown(markdownText);
+                
+                updateProgress(100, 'Conversion completed!');
+                
+                // Store the result
+                extractedMarkdown = markdownText;
+                
+                setTimeout(() => {
+                    showResult();
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to process PDF: ' + error.message);
+            }
+        }
+        
+        // Clean up markdown formatting
+        function cleanupMarkdown(text) {
+            return text
+                // Remove excessive whitespace
+                .replace(/\n{3,}/g, '\n\n')
+                // Fix spacing around headers
+                .replace(/^(#{1,6})\s*(.+)$/gm, '$1 $2')
+                // Remove empty headers
+                .replace(/^#{1,6}\s*$/gm, '')
+                // Clean up bullet points
+                .replace(/^[\u2022\u25CF\u25AA\u25AB\u25A0]\s*/gm, '- ')
+                // Fix numbered lists
+                .replace(/^(\d+)[\.\)]\s*/gm, '$1. ')
+                // Remove excessive spaces
+                .replace(/[ \t]+/g, ' ')
+                // Trim lines
+                .split('\n').map(line => line.trim()).join('\n')
+                // Remove excessive newlines again after trimming
+                .replace(/\n{3,}/g, '\n\n');
+        }
+        
+        // Update progress
+        function updateProgress(percentage, text) {
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            const progressDetails = document.getElementById('progressDetails');
+            
+            progressFill.style.width = percentage + '%';
+            progressText.textContent = text;
+            
+            if (percentage === 100) {
+                progressDetails.textContent = 'Finalizing conversion...';
+            }
+        }
+        
+        // Show result
+        function showResult() {
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('resultSection').style.display = 'block';
+            
+            // Show markdown preview
+            const preview = document.getElementById('markdownPreview');
+            preview.textContent = extractedMarkdown;
+        }
+        
+        // Download markdown file
+        function downloadMarkdown() {
+            const blob = new Blob([extractedMarkdown], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = selectedFile.name.replace('.pdf', '.md');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Copy to clipboard
+        function copyToClipboard() {
+            navigator.clipboard.writeText(extractedMarkdown).then(() => {
+                // Visual feedback
+                const button = event.target.closest('button');
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+        
+        // Show error
+        function showError(message) {
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+        }
+        
+        // Reset converter
+        function resetConverter() {
+            selectedFile = null;
+            extractedMarkdown = '';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('processButton').style.display = 'none';
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            document.getElementById('resultSection').style.display = 'none';
+            document.getElementById('uploadSection').style.display = 'block';
+            
+            // Reset progress
+            document.getElementById('progressFill').style.width = '0%';
+        }
+        
+        // Go back to presentation
+        function goBack() {
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>
