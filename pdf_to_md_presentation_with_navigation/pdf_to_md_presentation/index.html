@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to Markdown: Streamlining Content Extraction</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'SF Pro Display', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #393E46;
+        }
+        
+        .presentation-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .slide-frame {
+            width: 1280px;
+            height: 720px;
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .slide-content {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+        
+        .navigation {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 1000;
+        }
+        
+        .nav-button {
+            background: rgba(0, 195, 204, 0.8);
+            color: white;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .nav-button:hover {
+            background: rgba(0, 195, 204, 1);
+            transform: scale(1.1);
+        }
+        
+        .nav-button:disabled {
+            background: rgba(255, 255, 255, 0.3);
+            cursor: not-allowed;
+            transform: scale(1);
+        }
+        
+        .slide-counter {
+            position: fixed;
+            top: 30px;
+            right: 30px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+        
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 4px;
+            background: #00C3CC;
+            transition: width 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00C3CC;
+            font-size: 24px;
+        }
+        
+        /* Touch/swipe indicators */
+        .swipe-hint {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+            animation: fadeInOut 3s infinite;
+        }
+        
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.8; }
+        }
+        
+        /* Responsive design */
+        @media (max-width: 1400px) {
+            .slide-frame {
+                width: 90vw;
+                height: calc(90vw * 0.5625); /* 16:9 aspect ratio */
+                max-height: 80vh;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .slide-frame {
+                width: 95vw;
+                height: calc(95vw * 0.5625);
+                max-height: 70vh;
+            }
+            
+            .navigation {
+                bottom: 20px;
+                gap: 10px;
+            }
+            
+            .nav-button {
+                padding: 10px 14px;
+                font-size: 16px;
+            }
+            
+            .slide-counter {
+                top: 20px;
+                right: 20px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="presentation-container">
+        <div class="progress-bar" id="progressBar"></div>
+        
+        <div class="slide-counter" id="slideCounter">
+            1 / 10
+        </div>
+        
+        <div class="slide-frame">
+            <div class="loading" id="loading">
+                <i class="fas fa-spinner fa-spin"></i> Loading...
+            </div>
+            <iframe class="slide-content" id="slideFrame" style="display: none;"></iframe>
+        </div>
+        
+        <div class="navigation">
+            <button class="nav-button" id="prevBtn" onclick="previousSlide()">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <button class="nav-button" id="playBtn" onclick="toggleAutoplay()">
+                <i class="fas fa-play"></i>
+            </button>
+            <button class="nav-button" id="nextBtn" onclick="nextSlide()">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+        
+        <div class="swipe-hint" id="swipeHint">
+            Use arrow keys or swipe to navigate • Press Space for autoplay
+        </div>
+    </div>
+
+    <script>
+        // Slide configuration
+        const slides = [
+            'title_slide.html',
+            'challenge.html',
+            'solution.html',
+            'upload.html',
+            'extraction.html',
+            'output.html',
+            'benefits.html',
+            'design.html',
+            'future.html',
+            'action.html'
+        ];
+        
+        let currentSlide = 0;
+        let isAutoplay = false;
+        let autoplayInterval;
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        // DOM elements
+        const slideFrame = document.getElementById('slideFrame');
+        const loading = document.getElementById('loading');
+        const slideCounter = document.getElementById('slideCounter');
+        const progressBar = document.getElementById('progressBar');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const playBtn = document.getElementById('playBtn');
+        const swipeHint = document.getElementById('swipeHint');
+        
+        // Initialize presentation
+        function init() {
+            loadSlide(currentSlide);
+            updateUI();
+            
+            // Hide swipe hint after 5 seconds
+            setTimeout(() => {
+                swipeHint.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Load a specific slide
+        function loadSlide(index) {
+            if (index < 0 || index >= slides.length) return;
+            
+            loading.style.display = 'block';
+            slideFrame.style.display = 'none';
+            
+            slideFrame.src = slides[index];
+            
+            slideFrame.onload = () => {
+                loading.style.display = 'none';
+                slideFrame.style.display = 'block';
+                currentSlide = index;
+                updateUI();
+            };
+        }
+        
+        // Update UI elements
+        function updateUI() {
+            slideCounter.textContent = `${currentSlide + 1} / ${slides.length}`;
+            progressBar.style.width = `${((currentSlide + 1) / slides.length) * 100}%`;
+            
+            prevBtn.disabled = currentSlide === 0;
+            nextBtn.disabled = currentSlide === slides.length - 1;
+        }
+        
+        // Navigation functions
+        function nextSlide() {
+            if (currentSlide < slides.length - 1) {
+                loadSlide(currentSlide + 1);
+            }
+        }
+        
+        function previousSlide() {
+            if (currentSlide > 0) {
+                loadSlide(currentSlide - 1);
+            }
+        }
+        
+        function goToSlide(index) {
+            if (index >= 0 && index < slides.length) {
+                loadSlide(index);
+            }
+        }
+        
+        // Autoplay functionality
+        function toggleAutoplay() {
+            isAutoplay = !isAutoplay;
+            
+            if (isAutoplay) {
+                playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                startAutoplay();
+            } else {
+                playBtn.innerHTML = '<i class="fas fa-play"></i>';
+                stopAutoplay();
+            }
+        }
+        
+        function startAutoplay() {
+            autoplayInterval = setInterval(() => {
+                if (currentSlide < slides.length - 1) {
+                    nextSlide();
+                } else {
+                    // End of presentation, stop autoplay
+                    toggleAutoplay();
+                }
+            }, 5000); // 5 seconds per slide
+        }
+        
+        function stopAutoplay() {
+            if (autoplayInterval) {
+                clearInterval(autoplayInterval);
+                autoplayInterval = null;
+            }
+        }
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft':
+                case 'ArrowUp':
+                    e.preventDefault();
+                    previousSlide();
+                    break;
+                case 'ArrowRight':
+                case 'ArrowDown':
+                    e.preventDefault();
+                    nextSlide();
+                    break;
+                case ' ': // Spacebar
+                    e.preventDefault();
+                    toggleAutoplay();
+                    break;
+                case 'Home':
+                    e.preventDefault();
+                    goToSlide(0);
+                    break;
+                case 'End':
+                    e.preventDefault();
+                    goToSlide(slides.length - 1);
+                    break;
+                case 'Escape':
+                    e.preventDefault();
+                    if (isAutoplay) {
+                        toggleAutoplay();
+                    }
+                    break;
+            }
+        });
+        
+        // Touch/swipe navigation
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+        
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+        
+        function handleSwipe() {
+            const swipeThreshold = 50;
+            const diff = touchStartX - touchEndX;
+            
+            if (Math.abs(diff) > swipeThreshold) {
+                if (diff > 0) {
+                    // Swipe left - next slide
+                    nextSlide();
+                } else {
+                    // Swipe right - previous slide
+                    previousSlide();
+                }
+            }
+        }
+        
+        // Mouse wheel navigation
+        document.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            if (e.deltaY > 0) {
+                nextSlide();
+            } else {
+                previousSlide();
+            }
+        }, { passive: false });
+        
+        // Prevent context menu on long press (mobile)
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+        
+        // Initialize when page loads
+        window.addEventListener('load', init);
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            // Reload current slide to ensure proper scaling
+            loadSlide(currentSlide);
+        });
+    </script>
+</body>
+</html>
+

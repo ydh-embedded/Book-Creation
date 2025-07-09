@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap');
+      
+      body {
+        font-family: 'SF Pro Display', sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+      
+      .slide-container {
+        width: 1280px;
+        min-height: 720px;
+        background: #393E46;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 80px;
+        box-sizing: border-box;
+      }
+      
+      .content-container {
+        display: flex;
+        width: 100%;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .text-container {
+        width: 50%;
+        padding-right: 60px;
+      }
+      
+      .title {
+        color: #00C3CC;
+        font-family: 'Inter', sans-serif;
+        font-size: 36px;
+        font-weight: 700;
+        margin-bottom: 40px;
+      }
+      
+      .benefit-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 30px;
+      }
+      
+      .benefit-icon {
+        color: #00C3CC;
+        font-size: 24px;
+        margin-right: 15px;
+      }
+      
+      .benefit-text {
+        color: #FFFFFF;
+        font-size: 24px;
+        line-height: 1.5;
+      }
+      
+      .image-container {
+        width: 40%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      
+      .chart-container {
+        width: 300px;
+        height: 300px;
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="slide-container">
+      <div class="content-container">
+        <div class="text-container">
+          <h1 class="title">Why Markdown? Why This Tool?</h1>
+          <div class="benefit-item">
+            <i class="fas fa-universal-access benefit-icon"></i>
+            <p class="benefit-text"><strong>Accessibility:</strong> Easy to read and edit.</p>
+          </div>
+          <div class="benefit-item">
+            <i class="fas fa-recycle benefit-icon"></i>
+            <p class="benefit-text"><strong>Reusability:</strong> Content ready for web, documentation, or further analysis.</p>
+          </div>
+          <div class="benefit-item">
+            <i class="fas fa-bolt benefit-icon"></i>
+            <p class="benefit-text"><strong>Efficiency:</strong> Automates a tedious manual process.</p>
+          </div>
+        </div>
+        <div class="image-container">
+          <div class="chart-container">
+            <canvas id="benefitsChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('benefitsChart').getContext('2d');
+        
+        const chart = new Chart(ctx, {
+          type: 'radar',
+          data: {
+            labels: ['Accessibility', 'Reusability', 'Efficiency', 'Simplicity', 'Portability'],
+            datasets: [{
+              label: 'PDF to Markdown Benefits',
+              data: [90, 95, 85, 80, 90],
+              backgroundColor: 'rgba(0, 195, 204, 0.2)',
+              borderColor: '#00C3CC',
+              borderWidth: 2,
+              pointBackgroundColor: '#FFFFFF',
+              pointBorderColor: '#00C3CC',
+              pointHoverBackgroundColor: '#FFFFFF',
+              pointHoverBorderColor: '#00C3CC'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              r: {
+                angleLines: {
+                  color: 'rgba(255, 255, 255, 0.2)'
+                },
+                grid: {
+                  color: 'rgba(255, 255, 255, 0.2)'
+                },
+                pointLabels: {
+                  color: '#FFFFFF',
+                  font: {
+                    size: 12
+                  }
+                },
+                ticks: {
+                  color: '#FFFFFF',
+                  backdropColor: 'transparent',
+                  font: {
+                    size: 10
+                  }
+                }
+              }
+            },
+            plugins: {
+              legend: {
+                display: false
+              }
+            }
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
+
