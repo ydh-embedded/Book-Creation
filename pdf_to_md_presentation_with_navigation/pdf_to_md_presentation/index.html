@@ -186,6 +186,9 @@
             <button class="nav-button" id="nextBtn" onclick="nextSlide()">
                 <i class="fas fa-chevron-right"></i>
             </button>
+            <button class="nav-button" onclick="openConverter()" title="Try PDF Converter">
+                <i class="fas fa-file-upload"></i>
+            </button>
         </div>
         
         <div class="swipe-hint" id="swipeHint">
@@ -196,16 +199,16 @@
     <script>
         // Slide configuration
         const slides = [
-            'title_slide.html',
-            'challenge.html',
-            'solution.html',
-            'upload.html',
-            'extraction.html',
-            'output.html',
-            'benefits.html',
-            'design.html',
-            'future.html',
-            'action.html'
+            './title_slide.html',
+            './challenge.html',
+            './solution.html',
+            './upload.html',
+            './extraction.html',
+            './output.html',
+            './benefits.html',
+            './design.html',
+            './future.html',
+            './action.html'
         ];
         
         let currentSlide = 0;
@@ -394,6 +397,11 @@
             // Reload current slide to ensure proper scaling
             loadSlide(currentSlide);
         });
+        
+        // Open PDF converter
+        function openConverter() {
+            window.location.href = 'pdf_converter.html';
+        }
     </script>
 </body>
 </html>
