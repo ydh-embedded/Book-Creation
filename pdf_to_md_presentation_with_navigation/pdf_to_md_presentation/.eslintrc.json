@@ -4,23 +4,16 @@
     "es6": true
   },
   "extends": "eslint:recommended",
+  "plugins": ["html"],
   "parserOptions": {
     "ecmaVersion": 2021,
     "sourceType": "script"
   },
   "rules": {
-    "no-unused-vars": ["warn", {
-      "vars": "all",
-      "args": "after-used",
-      "argsIgnorePattern": "^_",
-      "varsIgnorePattern": "^_"
-    }],
-    "no-undef": "error"
+    "no-unused-vars": "warn"
   },
   "globals": {
     "pdfjsLib": "readonly",
-    "Tesseract": "readonly",
-    "Intl": "readonly",
-    "Chart": "readonly"
+    "Tesseract": "readonly"
   }
 }

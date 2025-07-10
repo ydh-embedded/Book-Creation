@@ -21,6 +21,11 @@
 
 <body>
     <script>
+        let thisIsUnused = 42;        // Sollte markiert werden
+        let thisIsUsed = 24;
+        console.log(thisIsUsed);
+    </script>
+    <script>
         let unusedTestVariable = 42; // Sollte rot unterstrichen werden
         let _ignoredVariable = 42;   // Wird ignoriert (wegen _)
     </script>
