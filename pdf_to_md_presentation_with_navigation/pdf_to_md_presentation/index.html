@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF to Markdown Converter</title>
-
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 
@@ -13,7 +12,7 @@
 
     <!-- LINK AJAX-->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
+  
 </head>
 <body>
     <button class="back-button" onclick="goBack()">
@@ -40,6 +39,26 @@
                 <div class="file-size" id="fileSize"></div>
             </div>
             
+            <div class="options-section" id="optionsSection">
+                <h4 style="color: #00C3CC; margin-bottom: 15px;">Conversion Options:</h4>
+                <div class="option-item">
+                    <input type="checkbox" id="extractImages" checked>
+                    <label for="extractImages">Extract images from PDF</label>
+                </div>
+                <div class="option-item">
+                    <input type="checkbox" id="useOCR" checked>
+                    <label for="useOCR">Use OCR for scanned/image-based PDFs (slower but more accurate)</label>
+                </div>
+                <div class="option-item">
+                    <input type="checkbox" id="preserveFormatting" checked>
+                    <label for="preserveFormatting">Preserve document structure and formatting</label>
+                </div>
+                <div class="option-item">
+                    <input type="checkbox" id="includeDiagnostics">
+                    <label for="includeDiagnostics">Include diagnostic information in output</label>
+                </div>
+            </div>
+            
             <button class="process-button" id="processButton" onclick="processFile()">
                 <i class="fas fa-cogs"></i> Convert to Markdown
             </button>
@@ -50,7 +69,19 @@
             <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
-            <div id="progressDetails">Extracting text and formatting...</div>
+            <div id="progressDetails">Analyzing document...</div>
+        </div>
+        
+        <div class="warning-section" id="warningSection">
+            <i class="fas fa-exclamation-triangle warning-icon"></i>
+            <div class="warning-title">Limited Text Extraction</div>
+            <div id="warningMessage">Some content could not be extracted properly.</div>
+            <button class="upload-button" onclick="continueWithOCR()" style="margin: 20px 10px;">
+                <i class="fas fa-eye"></i> Try OCR
+            </button>
+            <button class="upload-button" onclick="showPartialResult()" style="margin: 20px 10px;">
+                <i class="fas fa-check"></i> Use Partial Result
+            </button>
         </div>
         
         <div class="error-section" id="errorSection">
@@ -66,7 +97,19 @@
             <div class="result-icon" style="text-align: center;">
                 <i class="fas fa-check-circle"></i>
             </div>
-            <div class="result-title">Conversion Completed Successfully!</div>
+            <div class="result-title">Conversion Completed!</div>
+            
+            <div class="diagnostic-info" id="diagnosticInfo" style="display: none;"></div>
+            
+            <div class="images-section" id="imagesSection" style="display: none;">
+                <h4><i class="fas fa-images"></i> Extracted Images (<span id="imageCount">0</span>)</h4>
+                <div class="button-group">
+                    <button class="download-button download-all-images" onclick="downloadAllImages()">
+                        <i class="fas fa-download"></i> Download All Images as ZIP
+                    </button>
+                </div>
+                <div class="image-gallery" id="imageGallery"></div>
+            </div>
             
             <div class="markdown-preview" id="markdownPreview"></div>
             
@@ -95,6 +138,9 @@
         
         let selectedFile = null;
         let extractedMarkdown = '';
+        let extractedImages = [];
+        let pdfDocument = null;
+        let diagnosticData = {};
         
         // File selection handling
         function handleFileSelect(event) {
@@ -113,11 +159,13 @@
             const fileName = document.getElementById('fileName');
             const fileSize = document.getElementById('fileSize');
             const processButton = document.getElementById('processButton');
+            const optionsSection = document.getElementById('optionsSection');
             
             fileName.textContent = file.name;
             fileSize.textContent = `Size: ${(file.size / 1024 / 1024).toFixed(2)} MB`;
             
             fileInfo.style.display = 'block';
+            optionsSection.style.display = 'block';
             processButton.style.display = 'inline-block';
         }
         
@@ -153,7 +201,7 @@
             }
         });
         
-        // Process file using PDF.js
+        // Process file with enhanced error handling and image extraction
         async function processFile() {
             if (!selectedFile) {
                 alert('Please select a PDF file first.');
@@ -165,100 +213,343 @@
             document.getElementById('progressSection').style.display = 'block';
             
             try {
-                updateProgress(10, 'Reading PDF file...');
+                updateProgress(5, 'Reading PDF file...');
                 
                 // Convert file to array buffer
                 const arrayBuffer = await selectedFile.arrayBuffer();
                 
-                updateProgress(30, 'Loading PDF document...');
+                updateProgress(15, 'Loading PDF document...');
                 
-                // Load PDF document
-                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                // Load PDF document with enhanced error handling
+                const loadingTask = pdfjsLib.getDocument({ 
+                    data: arrayBuffer,
+                    enableXfa: true // Enable XFA forms
+                });
                 
-                updateProgress(50, 'Extracting text from pages...');
+                pdfDocument = await loadingTask.promise;
                 
-                let markdownText = `# ${selectedFile.name.replace('.pdf', '')}\n\n`;
+                // Initialize diagnostic data
+                diagnosticData = {
+                    fileName: selectedFile.name,
+                    fileSize: selectedFile.size,
+                    totalPages: pdfDocument.numPages,
+                    extractedPages: 0,
+                    textCharacters: 0,
+                    emptyPages: 0,
+                    imagesFound: 0,
+                    errors: [],
+                    methods: []
+                };
                 
-                // Extract text from each page
-                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                    const page = await pdf.getPage(pageNum);
-                    const textContent = await page.getTextContent();
-                    
-                    // Convert text items to markdown
-                    let pageText = '';
-                    let lastY = null;
-                    let lastSize = null;
-                    
-                    textContent.items.forEach((item, index) => {
-                        const text = item.str.trim();
-                        if (!text) return;
-                        
-                        // Detect potential headings based on font size and position
-                        const fontSize = item.transform[0];
-                        const y = item.transform[5];
-                        
-                        // If this is a new line (different Y position)
-                        if (lastY !== null && Math.abs(y - lastY) > 10) {
-                            pageText += '\n';
-                        }
-                        
-                        // If font size is significantly larger, treat as heading
-                        if (lastSize !== null && fontSize > lastSize * 1.2) {
-                            pageText += '\n## ';
-                        }
-                        
-                        pageText += text + ' ';
-                        lastY = y;
-                        lastSize = fontSize;
-                    });
-                    
-                    if (pageText.trim()) {
-                        markdownText += `## Page ${pageNum}\n\n${pageText.trim()}\n\n`;
-                    }
-                    
-                    // Update progress
-                    const progress = 50 + (pageNum / pdf.numPages) * 40;
-                    updateProgress(progress, `Processing page ${pageNum} of ${pdf.numPages}...`);
+                extractedImages = [];
+                
+                updateProgress(25, 'Analyzing document structure...');
+                
+                // Extract images if requested
+                if (document.getElementById('extractImages').checked) {
+                    updateProgress(30, 'Extracting images...');
+                    await extractImages();
                 }
                 
-                updateProgress(95, 'Formatting markdown...');
+                // Try standard text extraction
+                updateProgress(50, 'Extracting text...');
+                const standardResult = await extractTextStandard();
                 
-                // Clean up the markdown
-                markdownText = cleanupMarkdown(markdownText);
-                
-                updateProgress(100, 'Conversion completed!');
-                
-                // Store the result
-                extractedMarkdown = markdownText;
-                
-                setTimeout(() => {
-                    showResult();
-                }, 1000);
+                if (standardResult.success && standardResult.text.length > 100) {
+                    // Standard extraction worked well
+                    extractedMarkdown = standardResult.text;
+                    diagnosticData.methods.push('Standard PDF text extraction');
+                    updateProgress(100, 'Conversion completed!');
+                    setTimeout(() => showResult(), 1000);
+                } else {
+                    // Standard extraction failed or produced minimal text
+                    diagnosticData.errors.push('Standard text extraction produced minimal content');
+                    
+                    if (document.getElementById('useOCR').checked) {
+                        // Try OCR
+                        updateProgress(70, 'Standard extraction insufficient, trying OCR...');
+                        const ocrResult = await extractTextWithOCR();
+                        
+                        if (ocrResult.success) {
+                            extractedMarkdown = ocrResult.text;
+                            diagnosticData.methods.push('OCR text extraction');
+                            updateProgress(100, 'Conversion completed with OCR!');
+                            setTimeout(() => showResult(), 1000);
+                        } else {
+                            showWarning('Both standard and OCR extraction failed to produce sufficient content.');
+                        }
+                    } else {
+                        showWarning('Standard text extraction produced minimal content. Consider enabling OCR for scanned documents.');
+                    }
+                }
                 
             } catch (error) {
                 console.error('Error:', error);
-                showError('Failed to process PDF: ' + error.message);
+                diagnosticData.errors.push(error.message);
+                
+                let errorMessage = 'Failed to process PDF: ';
+                if (error.message.includes('Invalid PDF')) {
+                    errorMessage += 'The file appears to be corrupted or not a valid PDF.';
+                } else if (error.message.includes('password')) {
+                    errorMessage += 'This PDF is password protected.';
+                } else if (error.message.includes('permission')) {
+                    errorMessage += 'This PDF has copy protection enabled.';
+                } else {
+                    errorMessage += error.message;
+                }
+                
+                showError(errorMessage);
             }
+        }
+        
+        // Extract images from PDF
+        async function extractImages() {
+            try {
+                for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+                    const page = await pdfDocument.getPage(pageNum);
+                    const operatorList = await page.getOperatorList();
+                    
+                    for (let i = 0; i < operatorList.fnArray.length; i++) {
+                        if (operatorList.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
+                            const imgName = operatorList.argsArray[i][0];
+                            
+                            try {
+                                const imgObj = await page.objs.get(imgName);
+                                
+                                if (imgObj && imgObj.data) {
+                                    // Create canvas to convert image data
+                                    const canvas = document.createElement('canvas');
+                                    const ctx = canvas.getContext('2d');
+                                    
+                                    canvas.width = imgObj.width;
+                                    canvas.height = imgObj.height;
+                                    
+                                    // Create ImageData from the raw data
+                                    const imageData = new ImageData(
+                                        new Uint8ClampedArray(imgObj.data), 
+                                        imgObj.width, 
+                                        imgObj.height
+                                    );
+                                    
+                                    ctx.putImageData(imageData, 0, 0);
+                                    
+                                    // Convert to blob
+                                    const blob = await new Promise(resolve => {
+                                        canvas.toBlob(resolve, 'image/png');
+                                    });
+                                    
+                                    if (blob && blob.size > 1000) { // Filter out tiny images
+                                        const imageInfo = {
+                                            name: `image_page${pageNum}_${extractedImages.length + 1}.png`,
+                                            blob: blob,
+                                            url: URL.createObjectURL(blob),
+                                            page: pageNum,
+                                            width: imgObj.width,
+                                            height: imgObj.height,
+                                            size: blob.size
+                                        };
+                                        
+                                        extractedImages.push(imageInfo);
+                                        diagnosticData.imagesFound++;
+                                    }
+                                }
+                            } catch (imgError) {
+                                console.warn('Failed to extract image:', imgError);
+                            }
+                        }
+                    }
+                    
+                    const progress = 30 + (pageNum / pdfDocument.numPages) * 15;
+                    updateProgress(progress, `Extracting images from page ${pageNum}...`);
+                }
+            } catch (error) {
+                console.warn('Image extraction failed:', error);
+                diagnosticData.errors.push(`Image extraction: ${error.message}`);
+            }
+        }
+        
+        // Standard text extraction with image references
+        async function extractTextStandard() {
+            try {
+                let markdownText = `# ${selectedFile.name.replace('.pdf', '')}\n\n`;
+                let totalText = '';
+                
+                for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+                    try {
+                        const page = await pdfDocument.getPage(pageNum);
+                        const textContent = await page.getTextContent();
+                        
+                        let pageText = '';
+                        let lastY = null;
+                        let lastSize = null;
+                        
+                        textContent.items.forEach((item) => {
+                            const text = item.str.trim();
+                            if (!text) return;
+                            
+                            // Enhanced font detection
+                            const fontSize = item.transform ? item.transform[0] : 12;
+                            const y = item.transform ? item.transform[5] : 0;
+                            
+                            // Line break detection
+                            if (lastY !== null && Math.abs(y - lastY) > fontSize * 0.8) {
+                                pageText += '\n';
+                            }
+                            
+                            // Heading detection
+                            if (lastSize !== null && fontSize > lastSize * 1.3) {
+                                pageText += '\n## ';
+                            }
+                            
+                            pageText += text + ' ';
+                            lastY = y;
+                            lastSize = fontSize;
+                        });
+                        
+                        // Add image references for this page
+                        const pageImages = extractedImages.filter(img => img.page === pageNum);
+                        if (pageImages.length > 0) {
+                            pageText += '\n\n### Images on this page:\n\n';
+                            pageImages.forEach(img => {
+                                pageText += `![${img.name}](${img.name}) *(${img.width}x${img.height}px)*\n\n`;
+                            });
+                        }
+                        
+                        if (pageText.trim()) {
+                            markdownText += `## Page ${pageNum}\n\n${pageText.trim()}\n\n`;
+                            diagnosticData.extractedPages++;
+                            diagnosticData.textCharacters += pageText.length;
+                        } else {
+                            diagnosticData.emptyPages++;
+                        }
+                        
+                        totalText += pageText;
+                        
+                        const progress = 50 + (pageNum / pdfDocument.numPages) * 35;
+                        updateProgress(progress, `Processing page ${pageNum} of ${pdfDocument.numPages}...`);
+                        
+                    } catch (pageError) {
+                        diagnosticData.errors.push(`Page ${pageNum}: ${pageError.message}`);
+                    }
+                }
+                
+                const cleanMarkdown = cleanupMarkdown(markdownText);
+                return {
+                    success: totalText.length > 50,
+                    text: cleanMarkdown
+                };
+                
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+        
+        // OCR text extraction for scanned PDFs
+        async function extractTextWithOCR() {
+            try {
+                let markdownText = `# ${selectedFile.name.replace('.pdf', '')} (OCR)\n\n`;
+                let totalText = '';
+                
+                for (let pageNum = 1; pageNum <= Math.min(pdfDocument.numPages, 10); pageNum++) { // Limit OCR to first 10 pages
+                    try {
+                        const page = await pdfDocument.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: 2.0 });
+                        
+                        // Create canvas
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+                        
+                        // Render page to canvas
+                        await page.render({
+                            canvasContext: context,
+                            viewport: viewport
+                        }).promise;
+                        
+                        updateProgress(70 + (pageNum / Math.min(pdfDocument.numPages, 10)) * 25, `OCR processing page ${pageNum}...`);
+                        
+                        // Extract text using OCR
+                        const ocrResult = await Tesseract.recognize(canvas, 'eng+deu', {
+                            logger: m => {
+                                if (m.status === 'recognizing text') {
+                                    const progress = 70 + (pageNum / Math.min(pdfDocument.numPages, 10)) * 25 * (m.progress || 0);
+                                    updateProgress(progress, `OCR processing page ${pageNum}: ${Math.round((m.progress || 0) * 100)}%`);
+                                }
+                            }
+                        });
+                        
+                        let pageText = ocrResult.data.text.trim();
+                        
+                        // Add image references for this page
+                        const pageImages = extractedImages.filter(img => img.page === pageNum);
+                        if (pageImages.length > 0) {
+                            pageText += '\n\n### Images on this page:\n\n';
+                            pageImages.forEach(img => {
+                                pageText += `![${img.name}](${img.name}) *(${img.width}x${img.height}px)*\n\n`;
+                            });
+                        }
+                        
+                        if (pageText) {
+                            markdownText += `## Page ${pageNum}\n\n${pageText}\n\n`;
+                            totalText += pageText;
+                            diagnosticData.extractedPages++;
+                            diagnosticData.textCharacters += pageText.length;
+                        } else {
+                            diagnosticData.emptyPages++;
+                        }
+                        
+                    } catch (pageError) {
+                        diagnosticData.errors.push(`OCR Page ${pageNum}: ${pageError.message}`);
+                    }
+                }
+                
+                const cleanMarkdown = cleanupMarkdown(markdownText);
+                return {
+                    success: totalText.length > 50,
+                    text: cleanMarkdown
+                };
+                
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+        
+        // Continue with OCR after warning
+        async function continueWithOCR() {
+            document.getElementById('warningSection').style.display = 'none';
+            document.getElementById('progressSection').style.display = 'block';
+            
+            updateProgress(70, 'Starting OCR extraction...');
+            
+            const ocrResult = await extractTextWithOCR();
+            
+            if (ocrResult.success) {
+                extractedMarkdown = ocrResult.text;
+                diagnosticData.methods.push('OCR text extraction (after standard failed)');
+                updateProgress(100, 'OCR conversion completed!');
+                setTimeout(() => showResult(), 1000);
+            } else {
+                showError('OCR extraction also failed. This PDF may contain only images or have copy protection.');
+            }
+        }
+        
+        // Show partial result
+        function showPartialResult() {
+            document.getElementById('warningSection').style.display = 'none';
+            showResult();
         }
         
         // Clean up markdown formatting
         function cleanupMarkdown(text) {
             return text
-                // Remove excessive whitespace
                 .replace(/\n{3,}/g, '\n\n')
-                // Fix spacing around headers
                 .replace(/^(#{1,6})\s*(.+)$/gm, '$1 $2')
-                // Remove empty headers
                 .replace(/^#{1,6}\s*$/gm, '')
-                // Clean up bullet points
                 .replace(/^[\u2022\u25CF\u25AA\u25AB\u25A0]\s*/gm, '- ')
-                // Fix numbered lists
                 .replace(/^(\d+)[\.\)]\s*/gm, '$1. ')
-                // Remove excessive spaces
                 .replace(/[ \t]+/g, ' ')
-                // Trim lines
                 .split('\n').map(line => line.trim()).join('\n')
-                // Remove excessive newlines again after trimming
                 .replace(/\n{3,}/g, '\n\n');
         }
         
@@ -270,13 +561,10 @@
             
             progressFill.style.width = percentage + '%';
             progressText.textContent = text;
-            
-            if (percentage === 100) {
-                progressDetails.textContent = 'Finalizing conversion...';
-            }
+            progressDetails.textContent = `${Math.round(percentage)}% complete`;
         }
         
-        // Show result
+        // Show result with diagnostics and images
         function showResult() {
             document.getElementById('progressSection').style.display = 'none';
             document.getElementById('resultSection').style.display = 'block';
@@ -284,11 +572,111 @@
             // Show markdown preview
             const preview = document.getElementById('markdownPreview');
             preview.textContent = extractedMarkdown;
+            
+            // Show images if any were extracted
+            if (extractedImages.length > 0) {
+                showExtractedImages();
+            }
+            
+            // Show diagnostic information if requested
+            if (document.getElementById('includeDiagnostics').checked) {
+                const diagnosticDiv = document.getElementById('diagnosticInfo');
+                diagnosticDiv.innerHTML = `
+                    <h4>Diagnostic Information:</h4>
+                    <p><strong>File:</strong> ${diagnosticData.fileName} (${(diagnosticData.fileSize / 1024 / 1024).toFixed(2)} MB)</p>
+                    <p><strong>Pages:</strong> ${diagnosticData.totalPages} total, ${diagnosticData.extractedPages} extracted, ${diagnosticData.emptyPages} empty</p>
+                    <p><strong>Text:</strong> ${diagnosticData.textCharacters} characters extracted</p>
+                    <p><strong>Images:</strong> ${diagnosticData.imagesFound} images found and extracted</p>
+                    <p><strong>Methods used:</strong> ${diagnosticData.methods.join(', ')}</p>
+                    ${diagnosticData.errors.length > 0 ? `<p><strong>Errors:</strong> ${diagnosticData.errors.join('; ')}</p>` : ''}
+                `;
+                diagnosticDiv.style.display = 'block';
+            }
+        }
+        
+        // Show extracted images
+        function showExtractedImages() {
+            const imagesSection = document.getElementById('imagesSection');
+            const imageGallery = document.getElementById('imageGallery');
+            const imageCount = document.getElementById('imageCount');
+            
+            imageCount.textContent = extractedImages.length;
+            imageGallery.innerHTML = '';
+            
+            extractedImages.forEach((image, index) => {
+                const imageDiv = document.createElement('div');
+                imageDiv.className = 'image-preview';
+                
+                imageDiv.innerHTML = `
+                    <img src="${image.url}" alt="${image.name}" />
+                    <div class="image-info">
+                        ${image.name}<br>
+                        ${image.width}x${image.height}px<br>
+                        ${(image.size / 1024).toFixed(1)} KB<br>
+                        Page ${image.page}
+                    </div>
+                    <button class="download-button image-download" onclick="downloadImage(${index})">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                `;
+                
+                imageGallery.appendChild(imageDiv);
+            });
+            
+            imagesSection.style.display = 'block';
+        }
+        
+        // Download single image
+        function downloadImage(index) {
+            const image = extractedImages[index];
+            const a = document.createElement('a');
+            a.href = image.url;
+            a.download = image.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+        
+        // Download all images as ZIP (simplified version)
+        function downloadAllImages() {
+            if (extractedImages.length === 0) {
+                alert('No images to download');
+                return;
+            }
+            
+            // For simplicity, download images individually
+            // In a real implementation, you'd use JSZip library
+            extractedImages.forEach((image, index) => {
+                setTimeout(() => downloadImage(index), index * 500);
+            });
+            
+            alert(`Downloading ${extractedImages.length} images individually...`);
+        }
+        
+        // Show warning
+        function showWarning(message) {
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('warningSection').style.display = 'block';
+            document.getElementById('warningMessage').textContent = message;
         }
         
         // Download markdown file
         function downloadMarkdown() {
-            const blob = new Blob([extractedMarkdown], { type: 'text/markdown' });
+            let content = extractedMarkdown;
+            
+            if (document.getElementById('includeDiagnostics').checked) {
+                content += '\n\n---\n\n## Diagnostic Information\n\n';
+                content += `- **File:** ${diagnosticData.fileName} (${(diagnosticData.fileSize / 1024 / 1024).toFixed(2)} MB)\n`;
+                content += `- **Pages:** ${diagnosticData.totalPages} total, ${diagnosticData.extractedPages} extracted, ${diagnosticData.emptyPages} empty\n`;
+                content += `- **Text:** ${diagnosticData.textCharacters} characters extracted\n`;
+                content += `- **Images:** ${diagnosticData.imagesFound} images found and extracted\n`;
+                content += `- **Methods used:** ${diagnosticData.methods.join(', ')}\n`;
+                if (diagnosticData.errors.length > 0) {
+                    content += `- **Errors:** ${diagnosticData.errors.join('; ')}\n`;
+                }
+            }
+            
+            const blob = new Blob([content], { type: 'text/markdown' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -302,7 +690,6 @@
         // Copy to clipboard
         function copyToClipboard() {
             navigator.clipboard.writeText(extractedMarkdown).then(() => {
-                // Visual feedback
                 const button = event.target.closest('button');
                 const originalText = button.innerHTML;
                 button.innerHTML = '<i class="fas fa-check"></i> Copied!';
@@ -326,10 +713,21 @@
         function resetConverter() {
             selectedFile = null;
             extractedMarkdown = '';
+            pdfDocument = null;
+            diagnosticData = {};
+            
+            // Clean up image URLs
+            extractedImages.forEach(image => {
+                URL.revokeObjectURL(image.url);
+            });
+            extractedImages = [];
+            
             document.getElementById('fileInput').value = '';
             document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('optionsSection').style.display = 'none';
             document.getElementById('processButton').style.display = 'none';
             document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('warningSection').style.display = 'none';
             document.getElementById('errorSection').style.display = 'none';
             document.getElementById('resultSection').style.display = 'none';
             document.getElementById('uploadSection').style.display = 'block';
