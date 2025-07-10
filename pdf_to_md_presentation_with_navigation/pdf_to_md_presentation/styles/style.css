@@ -1,4 +1,4 @@
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap');
         
         body {
@@ -132,6 +132,26 @@
             transform: none;
         }
         
+        .options-section {
+            display: none;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        
+        .option-item {
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .option-item input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+        
         .progress-section {
             display: none;
             background: rgba(255, 255, 255, 0.05);
@@ -205,6 +225,17 @@
             transform: translateY(-2px);
         }
         
+        .download-button.image-download {
+            background: #4CAF50;
+            font-size: 14px;
+            padding: 10px 20px;
+            margin: 5px;
+        }
+        
+        .download-button.image-download:hover {
+            background: #45a049;
+        }
+        
         .error-section {
             display: none;
             background: rgba(255, 0, 0, 0.1);
@@ -213,6 +244,29 @@
             padding: 40px;
             text-align: center;
             margin-bottom: 40px;
+        }
+        
+        .warning-section {
+            display: none;
+            background: rgba(255, 165, 0, 0.1);
+            border: 1px solid #ffa500;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .warning-icon {
+            font-size: 60px;
+            color: #ffa500;
+            margin-bottom: 20px;
+        }
+        
+        .warning-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #ffa500;
         }
         
         .error-icon {
@@ -265,4 +319,67 @@
         .button-group {
             text-align: center;
             margin: 20px 0;
+        }
+        
+        .diagnostic-info {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .diagnostic-info h4 {
+            color: #00C3CC;
+            margin: 0 0 10px 0;
+        }
+        
+        .images-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .images-section h4 {
+            color: #00C3CC;
+            margin: 0 0 15px 0;
+        }
+        
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .image-preview {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            border: 1px solid rgba(0, 195, 204, 0.3);
+        }
+        
+        .image-preview img {
+            max-width: 100%;
+            max-height: 150px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .image-info {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-bottom: 10px;
+        }
+        
+        .download-all-images {
+            background: #4CAF50;
+            margin-bottom: 20px;
+        }
+        
+        .download-all-images:hover {
+            background: #45a049;
         }
