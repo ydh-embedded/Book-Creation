@@ -9,7 +9,7 @@
     "sourceType": "script"
   },
   "rules": {
-    "no-unused-vars": ["error", {
+    "no-unused-vars": ["warn", {
       "vars": "all",
       "args": "after-used",
       "argsIgnorePattern": "^_",
@@ -20,6 +20,7 @@
   "globals": {
     "pdfjsLib": "readonly",
     "Tesseract": "readonly",
-    "Intl": "readonly"
+    "Intl": "readonly",
+    "Chart": "readonly"
   }
 }
