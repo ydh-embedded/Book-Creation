@@ -256,5 +256,7 @@
     "javascript:S2814": { "level": "off" }
   },
   "sonarlint.output.showVerboseLogs": false,
-  "sonarlint.disableTelemetry": true
+  "sonarlint.disableTelemetry": true,
+    "sonarlint.analyzerProperties": {
+    "sonar.javascript.globals": "pdfjsLib,Tesseract"}
 }
