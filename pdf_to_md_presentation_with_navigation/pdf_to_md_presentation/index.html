@@ -57,6 +57,10 @@
                     <input type="checkbox" id="includeDiagnostics">
                     <label for="includeDiagnostics">Include diagnostic information in output</label>
                 </div>
+                <div class="option-item">
+                    <input type="checkbox" id="debugMode">
+                    <label for="debugMode">Enable debug mode (show detailed processing log)</label>
+                </div>
             </div>
             
             <button class="process-button" id="processButton" onclick="processFile()">
@@ -98,6 +102,11 @@
                 <i class="fas fa-check-circle"></i>
             </div>
             <div class="result-title">Conversion Completed!</div>
+            
+            <div class="diagnostic-info" id="debugConsole" style="display: none;">
+                <h4><i class="fas fa-bug"></i> Debug Log:</h4>
+                <div id="debugLog" style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap;"></div>
+            </div>
             
             <div class="diagnostic-info" id="diagnosticInfo" style="display: none;"></div>
             
@@ -141,6 +150,24 @@
         let extractedImages = [];
         let pdfDocument = null;
         let diagnosticData = {};
+        let debugLog = [];
+        
+        // Debug logging function
+        function addDebugLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            debugLog.push(logEntry);
+            console.log(logEntry);
+            
+            // Update debug console if visible
+            if (document.getElementById('debugMode').checked) {
+                const debugConsole = document.getElementById('debugLog');
+                if (debugConsole) {
+                    debugConsole.textContent = debugLog.join('\n');
+                    debugConsole.scrollTop = debugConsole.scrollHeight;
+                }
+            }
+        }
         
         // File selection handling
         function handleFileSelect(event) {
@@ -208,25 +235,35 @@
                 return;
             }
             
-            // Show progress section
+            // Hide all sections first
             document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('warningSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            document.getElementById('resultSection').style.display = 'none';
             document.getElementById('progressSection').style.display = 'block';
             
             try {
                 updateProgress(5, 'Reading PDF file...');
+                addDebugLog(`Starting PDF processing for: ${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`);
                 
                 // Convert file to array buffer
                 const arrayBuffer = await selectedFile.arrayBuffer();
+                addDebugLog(`File converted to array buffer, size: ${arrayBuffer.byteLength} bytes`);
                 
                 updateProgress(15, 'Loading PDF document...');
+                addDebugLog('Initializing PDF.js document loader...');
                 
                 // Load PDF document with enhanced error handling
                 const loadingTask = pdfjsLib.getDocument({ 
                     data: arrayBuffer,
-                    enableXfa: true // Enable XFA forms
+                    enableXfa: true, // Enable XFA forms
+                    standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
+                    disableAutoFetch: false,
+                    disableStream: false
                 });
                 
                 pdfDocument = await loadingTask.promise;
+                addDebugLog(`PDF loaded successfully! Pages: ${pdfDocument.numPages}, PDF version: ${pdfDocument.numPages > 0 ? 'valid' : 'invalid'}`);
                 
                 // Initialize diagnostic data
                 diagnosticData = {
@@ -238,62 +275,131 @@
                     emptyPages: 0,
                     imagesFound: 0,
                     errors: [],
-                    methods: []
+                    methods: [],
+                    processingSteps: []
                 };
                 
                 extractedImages = [];
                 
                 updateProgress(25, 'Analyzing document structure...');
+                diagnosticData.processingSteps.push('Document loaded successfully');
+                addDebugLog('Document structure analysis complete');
                 
                 // Extract images if requested
                 if (document.getElementById('extractImages').checked) {
                     updateProgress(30, 'Extracting images...');
-                    await extractImages();
+                    addDebugLog('Starting image extraction...');
+                    try {
+                        await extractImages();
+                        diagnosticData.processingSteps.push(`Image extraction completed: ${extractedImages.length} images found`);
+                        addDebugLog(`Image extraction completed: ${extractedImages.length} images found`);
+                    } catch (imgError) {
+                        addDebugLog(`Image extraction failed: ${imgError.message}`);
+                        diagnosticData.errors.push(`Image extraction failed: ${imgError.message}`);
+                        diagnosticData.processingSteps.push('Image extraction failed, continuing with text');
+                    }
+                } else {
+                    addDebugLog('Image extraction disabled by user');
                 }
                 
                 // Try standard text extraction
                 updateProgress(50, 'Extracting text...');
-                const standardResult = await extractTextStandard();
+                addDebugLog('Starting standard text extraction...');
+                let textExtractionSuccessful = false;
                 
-                if (standardResult.success && standardResult.text.length > 100) {
-                    // Standard extraction worked well
-                    extractedMarkdown = standardResult.text;
-                    diagnosticData.methods.push('Standard PDF text extraction');
-                    updateProgress(100, 'Conversion completed!');
-                    setTimeout(() => showResult(), 1000);
-                } else {
-                    // Standard extraction failed or produced minimal text
-                    diagnosticData.errors.push('Standard text extraction produced minimal content');
+                try {
+                    const standardResult = await extractTextStandard();
+                    addDebugLog(`Standard extraction result: success=${standardResult.success}, textLength=${standardResult.text?.length || 0}`);
                     
-                    if (document.getElementById('useOCR').checked) {
-                        // Try OCR
-                        updateProgress(70, 'Standard extraction insufficient, trying OCR...');
-                        const ocrResult = await extractTextWithOCR();
+                    if (standardResult.success && standardResult.text && standardResult.text.length > 100) {
+                        // Standard extraction worked well
+                        extractedMarkdown = standardResult.text;
+                        diagnosticData.methods.push('Standard PDF text extraction');
+                        diagnosticData.processingSteps.push('Standard text extraction successful');
+                        textExtractionSuccessful = true;
+                        addDebugLog('Standard text extraction successful');
+                        updateProgress(100, 'Conversion completed!');
+                        setTimeout(() => showResult(), 1000);
+                    } else {
+                        diagnosticData.processingSteps.push('Standard text extraction produced minimal content');
+                        addDebugLog(`Standard extraction produced minimal content: ${standardResult.text?.length || 0} characters`);
                         
-                        if (ocrResult.success) {
-                            extractedMarkdown = ocrResult.text;
-                            diagnosticData.methods.push('OCR text extraction');
-                            updateProgress(100, 'Conversion completed with OCR!');
-                            setTimeout(() => showResult(), 1000);
-                        } else {
-                            showWarning('Both standard and OCR extraction failed to produce sufficient content.');
+                        // If we have images but minimal text, might be a scanned PDF
+                        if (extractedImages.length > 0) {
+                            diagnosticData.processingSteps.push('PDF appears to be image-based, OCR recommended');
+                            addDebugLog('PDF appears to be image-based (scanned document)');
+                        }
+                    }
+                } catch (textError) {
+                    addDebugLog(`Standard text extraction failed: ${textError.message}`);
+                    diagnosticData.errors.push(`Standard text extraction: ${textError.message}`);
+                    diagnosticData.processingSteps.push('Standard text extraction failed');
+                }
+                
+                // If standard extraction didn't work, try OCR
+                if (!textExtractionSuccessful) {
+                    if (document.getElementById('useOCR').checked) {
+                        updateProgress(70, 'Trying OCR extraction...');
+                        diagnosticData.processingSteps.push('Attempting OCR extraction');
+                        addDebugLog('Starting OCR extraction (Tesseract.js)...');
+                        
+                        try {
+                            const ocrResult = await extractTextWithOCR();
+                            addDebugLog(`OCR extraction result: success=${ocrResult.success}, textLength=${ocrResult.text?.length || 0}`);
+                            
+                            if (ocrResult.success && ocrResult.text && ocrResult.text.length > 50) {
+                                extractedMarkdown = ocrResult.text;
+                                diagnosticData.methods.push('OCR text extraction');
+                                diagnosticData.processingSteps.push('OCR extraction successful');
+                                textExtractionSuccessful = true;
+                                addDebugLog('OCR extraction successful');
+                                updateProgress(100, 'Conversion completed with OCR!');
+                                setTimeout(() => showResult(), 1000);
+                            } else {
+                                diagnosticData.processingSteps.push('OCR extraction also produced minimal content');
+                                addDebugLog(`OCR also produced minimal content: ${ocrResult.text?.length || 0} characters`);
+                            }
+                        } catch (ocrError) {
+                            addDebugLog(`OCR extraction failed: ${ocrError.message}`);
+                            diagnosticData.errors.push(`OCR extraction: ${ocrError.message}`);
+                            diagnosticData.processingSteps.push('OCR extraction failed');
                         }
                     } else {
-                        showWarning('Standard text extraction produced minimal content. Consider enabling OCR for scanned documents.');
+                        diagnosticData.processingSteps.push('OCR disabled by user');
+                        addDebugLog('OCR disabled by user - cannot attempt OCR extraction');
+                    }
+                }
+                
+                // If both methods failed, show warning or error based on what we have
+                if (!textExtractionSuccessful) {
+                    if (extractedImages.length > 0) {
+                        // We have images but no text - show warning with images
+                        extractedMarkdown = `# ${selectedFile.name.replace('.pdf', '')}\n\n*No readable text was found in this PDF, but ${extractedImages.length} images were extracted.*\n\n`;
+                        diagnosticData.methods.push('Image extraction only');
+                        diagnosticData.processingSteps.push('Showing partial result with images only');
+                        addDebugLog(`No text extracted, but ${extractedImages.length} images found - showing partial result`);
+                        showWarning(`Text extraction failed, but ${extractedImages.length} images were extracted. This might be a scanned document.`);
+                    } else {
+                        // Nothing was extracted
+                        addDebugLog('No content could be extracted from PDF');
+                        throw new Error('No content could be extracted from this PDF. It may be corrupted, password-protected, or contain only non-extractable content.');
                     }
                 }
                 
             } catch (error) {
-                console.error('Error:', error);
+                addDebugLog(`Fatal error during PDF processing: ${error.message}`);
                 diagnosticData.errors.push(error.message);
+                diagnosticData.processingSteps.push(`Fatal error: ${error.message}`);
                 
                 let errorMessage = 'Failed to process PDF: ';
-                if (error.message.includes('Invalid PDF')) {
+                if (error.message.includes('Invalid PDF') || error.message.includes('corrupted')) {
                     errorMessage += 'The file appears to be corrupted or not a valid PDF.';
-                } else if (error.message.includes('password')) {
-                    errorMessage += 'This PDF is password protected.';
+                } else if (error.message.includes('password') || error.message.includes('encrypted')) {
+                    errorMessage += 'This PDF is password protected or encrypted.';
                 } else if (error.message.includes('permission')) {
                     errorMessage += 'This PDF has copy protection enabled.';
+                } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                    errorMessage += 'Network error loading PDF.js resources. Please check your internet connection.';
                 } else {
                     errorMessage += error.message;
                 }
@@ -304,67 +410,99 @@
         
         // Extract images from PDF
         async function extractImages() {
+            console.log('Starting image extraction...');
             try {
                 for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-                    const page = await pdfDocument.getPage(pageNum);
-                    const operatorList = await page.getOperatorList();
-                    
-                    for (let i = 0; i < operatorList.fnArray.length; i++) {
-                        if (operatorList.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
-                            const imgName = operatorList.argsArray[i][0];
-                            
-                            try {
-                                const imgObj = await page.objs.get(imgName);
+                    try {
+                        const page = await pdfDocument.getPage(pageNum);
+                        
+                        // Try to get operator list for image detection
+                        const operatorList = await page.getOperatorList();
+                        console.log(`Page ${pageNum}: Found ${operatorList.fnArray.length} operations`);
+                        
+                        let pageImageCount = 0;
+                        
+                        for (let i = 0; i < operatorList.fnArray.length; i++) {
+                            if (operatorList.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
+                                const imgName = operatorList.argsArray[i][0];
+                                console.log(`Found image object: ${imgName} on page ${pageNum}`);
                                 
-                                if (imgObj && imgObj.data) {
-                                    // Create canvas to convert image data
-                                    const canvas = document.createElement('canvas');
-                                    const ctx = canvas.getContext('2d');
+                                try {
+                                    // Wait for image object to be available
+                                    const imgObj = await page.objs.get(imgName);
                                     
-                                    canvas.width = imgObj.width;
-                                    canvas.height = imgObj.height;
-                                    
-                                    // Create ImageData from the raw data
-                                    const imageData = new ImageData(
-                                        new Uint8ClampedArray(imgObj.data), 
-                                        imgObj.width, 
-                                        imgObj.height
-                                    );
-                                    
-                                    ctx.putImageData(imageData, 0, 0);
-                                    
-                                    // Convert to blob
-                                    const blob = await new Promise(resolve => {
-                                        canvas.toBlob(resolve, 'image/png');
-                                    });
-                                    
-                                    if (blob && blob.size > 1000) { // Filter out tiny images
-                                        const imageInfo = {
-                                            name: `image_page${pageNum}_${extractedImages.length + 1}.png`,
-                                            blob: blob,
-                                            url: URL.createObjectURL(blob),
-                                            page: pageNum,
-                                            width: imgObj.width,
-                                            height: imgObj.height,
-                                            size: blob.size
-                                        };
+                                    if (imgObj && imgObj.data && imgObj.width && imgObj.height) {
+                                        console.log(`Image ${imgName}: ${imgObj.width}x${imgObj.height}, ${imgObj.data.length} bytes`);
                                         
-                                        extractedImages.push(imageInfo);
-                                        diagnosticData.imagesFound++;
+                                        // Create canvas to convert image data
+                                        const canvas = document.createElement('canvas');
+                                        const ctx = canvas.getContext('2d');
+                                        
+                                        canvas.width = imgObj.width;
+                                        canvas.height = imgObj.height;
+                                        
+                                        // Create ImageData from the raw data
+                                        let imageData;
+                                        if (imgObj.data instanceof Uint8ClampedArray) {
+                                            imageData = new ImageData(imgObj.data, imgObj.width, imgObj.height);
+                                        } else {
+                                            // Convert regular array to Uint8ClampedArray
+                                            const clampedData = new Uint8ClampedArray(imgObj.data);
+                                            imageData = new ImageData(clampedData, imgObj.width, imgObj.height);
+                                        }
+                                        
+                                        ctx.putImageData(imageData, 0, 0);
+                                        
+                                        // Convert to blob
+                                        const blob = await new Promise(resolve => {
+                                            canvas.toBlob(resolve, 'image/png', 1.0);
+                                        });
+                                        
+                                        if (blob && blob.size > 1000) { // Filter out tiny images
+                                            const imageInfo = {
+                                                name: `image_page${pageNum}_${pageImageCount + 1}.png`,
+                                                blob: blob,
+                                                url: URL.createObjectURL(blob),
+                                                page: pageNum,
+                                                width: imgObj.width,
+                                                height: imgObj.height,
+                                                size: blob.size
+                                            };
+                                            
+                                            extractedImages.push(imageInfo);
+                                            diagnosticData.imagesFound++;
+                                            pageImageCount++;
+                                            console.log(`Successfully extracted image: ${imageInfo.name}`);
+                                        } else {
+                                            console.log(`Skipped small image: ${blob ? blob.size : 0} bytes`);
+                                        }
+                                    } else {
+                                        console.log(`Image object ${imgName} has no valid data`);
                                     }
+                                } catch (imgError) {
+                                    console.warn(`Failed to extract image ${imgName}:`, imgError);
+                                    diagnosticData.errors.push(`Image ${imgName}: ${imgError.message}`);
                                 }
-                            } catch (imgError) {
-                                console.warn('Failed to extract image:', imgError);
                             }
                         }
+                        
+                        console.log(`Page ${pageNum}: Extracted ${pageImageCount} images`);
+                        
+                    } catch (pageError) {
+                        console.warn(`Failed to process page ${pageNum} for images:`, pageError);
+                        diagnosticData.errors.push(`Image extraction page ${pageNum}: ${pageError.message}`);
                     }
                     
                     const progress = 30 + (pageNum / pdfDocument.numPages) * 15;
-                    updateProgress(progress, `Extracting images from page ${pageNum}...`);
+                    updateProgress(progress, `Extracting images from page ${pageNum}/${pdfDocument.numPages}...`);
                 }
+                
+                console.log(`Image extraction completed. Total images: ${extractedImages.length}`);
+                
             } catch (error) {
-                console.warn('Image extraction failed:', error);
+                console.error('Image extraction failed:', error);
                 diagnosticData.errors.push(`Image extraction: ${error.message}`);
+                throw error; // Re-throw to be caught by calling function
             }
         }
         
@@ -715,6 +853,7 @@
             extractedMarkdown = '';
             pdfDocument = null;
             diagnosticData = {};
+            debugLog = [];
             
             // Clean up image URLs
             extractedImages.forEach(image => {
@@ -732,8 +871,13 @@
             document.getElementById('resultSection').style.display = 'none';
             document.getElementById('uploadSection').style.display = 'block';
             
-            // Reset progress
             document.getElementById('progressFill').style.width = '0%';
+            
+            // Clear debug console
+            const debugLogElement = document.getElementById('debugLog');
+            if (debugLogElement) {
+                debugLogElement.textContent = '';
+            }
         }
         
         // Go back to presentation
